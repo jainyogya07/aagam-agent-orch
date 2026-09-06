@@ -20,6 +20,7 @@ const MODEL_PROVIDER_MAP: Record<string, string> = {
   'gpt-4.1-nano': 'openai',
   'glm-4': 'tensormux',
   'glm-4-flash': 'tensormux',
+  'glm-4-7-flash': 'tensormux',
   'deepseek-v3': 'tensormux',
 };
 

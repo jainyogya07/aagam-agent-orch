@@ -1,5 +1,5 @@
 // GET /api/runs/[id] — Get run details
-import { db, schema } from '@/lib/db';
+import { db, schema, dbAvailable } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 import type { NextRequest } from 'next/server';
 
@@ -8,7 +8,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!dbAvailable) {
+      return Response.json({ error: 'Database is not configured on this host.' }, { status: 503 });
+    }
+
     const { id } = await params;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      return Response.json({ error: 'Run not found' }, { status: 404 });
+    }
 
     const run = await db.select().from(schema.runs).where(eq(schema.runs.id, id)).limit(1);
     if (run.length === 0) {
@@ -29,10 +36,19 @@ export async function GET(
       .where(eq(schema.events.runId, id))
       .orderBy(schema.events.createdAt);
 
+    const executionsList = await db.select()
+      .from(schema.executions)
+      .where(eq(schema.executions.runId, id));
+
+    const { AOSessionAdapter } = await import('@/lib/runtime/ao/ao-session-adapter');
+    const aoCorrelations = AOSessionAdapter.listCorrelations().filter(c => c.runId === id);
+
     return Response.json({
       run: run[0],
       architectures: architecturesList,
       evaluations: evaluationsList,
+      executions: executionsList,
+      aoSessions: aoCorrelations,
       events: eventsList.map(e => ({
         id: e.id,
         runId: e.runId,

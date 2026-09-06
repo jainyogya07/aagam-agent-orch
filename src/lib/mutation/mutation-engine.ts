@@ -239,16 +239,16 @@ async function generateProposals(input: MutationEngineInput): Promise<MutationPr
     const node = currentArchitecture.nodes.find(n => n.id === contrib.agentId);
     if (!node) continue;
 
-    if (node.model === 'gpt-4o' && contrib.marginalQualityGain < 0.15) {
+    if ((node.model === 'gpt-5-nano' || node.model === 'gpt-4o') && contrib.marginalQualityGain < 0.15) {
       proposals.push({
         id: uuidv4(),
         type: 'CHANGE_MODEL',
         targetNodeId: contrib.agentId,
-        reason: `${contrib.agentName} uses expensive model (gpt-4o) but contribution is moderate (${(contrib.marginalQualityGain * 100).toFixed(1)}%)`,
-        expectedImprovement: 'Reduce cost by ~60% by switching to gpt-4o-mini',
+        reason: `${contrib.agentName} uses high-cost model but marginal contribution is moderate (${(contrib.marginalQualityGain * 100).toFixed(1)}%)`,
+        expectedImprovement: 'Reduce cost and latency by switching to fast glm-4-flash',
         estimatedCost: 0,
         risk: 'Potential quality reduction for complex reasoning tasks',
-        payload: { newModel: 'gpt-4o-mini' },
+        payload: { newModel: 'glm-4-flash' },
       });
     }
   }

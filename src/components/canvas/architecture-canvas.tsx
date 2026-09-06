@@ -76,6 +76,24 @@ function AgentCardNode({ data }: { data: Record<string, unknown> }) {
         </div>
       )}
 
+      {Boolean(data.aoSessionId) && (
+        <div className="agent-card-stat" style={{ borderTop: '1px dashed var(--color-border)', paddingTop: 4 }}>
+          <span className="agent-card-stat-label">Session</span>
+          <span className="agent-card-stat-value" style={{ color: 'var(--color-accent)' }}>
+            AO-{String(data.aoSessionId).replace(/^[a-z]+-/, '')}
+          </span>
+        </div>
+      )}
+
+      {Boolean(data.harness) && (
+        <div className="agent-card-stat">
+          <span className="agent-card-stat-label">Execution</span>
+          <span className="agent-card-stat-value" style={{ textTransform: 'capitalize' }}>
+            {String(data.harness)}
+          </span>
+        </div>
+      )}
+
       <div className={`agent-card-status ${status}`}>
         {status}
       </div>

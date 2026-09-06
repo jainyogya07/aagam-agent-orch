@@ -261,6 +261,51 @@ export class ResourceExchange {
   }
 
   /**
+   * Explicitly reclaims a reservation from an agent back to the central pool.
+   */
+  public reclaimReservation(agentId: string, reason: string): { reclaimed: number; reserved: number; spent: number; amount: number } {
+    const allocation = this.allocations.get(agentId);
+    const reserved = allocation?.allocated || 0.05;
+    const spent = allocation?.spent || 0;
+    const amount = allocation ? Math.max(0.04, allocation.remaining || 0.05) : 0.05;
+
+    if (allocation) {
+      allocation.allocated = Math.max(0, allocation.allocated - amount);
+      allocation.remaining = Math.max(0, allocation.remaining - amount);
+    }
+
+    this.pool.moneyRemaining += amount;
+
+    eventBus.emit({
+      id: uuidv4(),
+      runId: this.runId,
+      type: 'resource.reclaimed',
+      timestamp: Date.now(),
+      payload: {
+        agentId,
+        fromAgentId: agentId,
+        agentName: allocation?.agentName || agentId,
+        fromAgentName: allocation?.agentName || agentId,
+        amount,
+        reserved,
+        spent,
+        reclaimed: amount,
+        reason,
+        poolRemaining: this.pool.moneyRemaining,
+      },
+    });
+
+    eventBus.log(
+      this.runId,
+      'warn',
+      `RECLAIM: $${amount.toFixed(4)} reclaimed from [${allocation?.agentName || agentId}] (${reason})`
+    );
+
+    return { reclaimed: amount, reserved, spent, amount };
+  }
+
+
+  /**
    * Reallocate resources dynamically based on Quality Defect Report.
    * Priority formula: (Expected Quality Gain / Resource Cost).
    */

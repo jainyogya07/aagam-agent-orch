@@ -1,4 +1,4 @@
-import { db, schema } from '@/lib/db';
+import { db, schema, dbAvailable } from '@/lib/db';
 import { executeRun } from '@/lib/orchestrator/run-orchestrator';
 import { getNeatlogsSessionUrl } from '@/lib/observability/neatlogs';
 import { eq } from 'drizzle-orm';
@@ -6,6 +6,10 @@ import { v4 as uuidv4 } from 'uuid';
 
 export async function POST(request: Request) {
   try {
+    if (!dbAvailable) {
+      return Response.json({ error: 'Database is not configured on this host.' }, { status: 503 });
+    }
+
     const body = await request.json();
     const {
       taskId,
@@ -126,6 +130,10 @@ export async function POST(request: Request) {
 // GET /api/runs — List all runs
 export async function GET() {
   try {
+    if (!dbAvailable) {
+      return Response.json({ error: 'Database is not configured on this host.' }, { status: 503 });
+    }
+
     const allRuns = await db.select().from(schema.runs).orderBy(schema.runs.createdAt);
     return Response.json({ runs: allRuns });
   } catch (error) {

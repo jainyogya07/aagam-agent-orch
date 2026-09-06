@@ -145,7 +145,11 @@ Evaluate the output strictly against the rubric. Return JSON:`;
 
       try {
         const availableModels = gateway.getAvailableModels();
-        const evalModel = availableModels.includes('gpt-5-nano') ? 'gpt-5-nano' : (availableModels[0] || 'gpt-5-nano');
+        const evalModel = availableModels.includes('glm-4-flash')
+          ? 'glm-4-flash'
+          : availableModels.includes('gpt-5-nano')
+          ? 'gpt-5-nano'
+          : (availableModels[0] || 'glm-4-flash');
 
         const response = await gateway.generate(evalModel, userPrompt, {
           systemPrompt,
@@ -221,24 +225,60 @@ Evaluate the output strictly against the rubric. Return JSON:`;
       } catch (err) {
         eventBus.log(runId, 'warn', `Evaluation judge fallback: ${err instanceof Error ? err.message : String(err)}`);
 
-        // Conservative baseline heuristic
-        const hasCoverage = /tam|market|competitor|risk|recommendation/i.test(outputToEvaluate);
-        const qualityScore = hasCoverage ? 0.95 : 0.45;
+        // Conservative per-signal heuristic — each signal contributes independently
+        const signals = {
+          hasTAM: /tam|market size|\$\d+/i.test(outputToEvaluate),
+          hasCompetitors: /competitor|incumbent|langgraph|crewai/i.test(outputToEvaluate),
+          hasRisks: /risk|mitigat|threat/i.test(outputToEvaluate),
+          hasRec: /recommendation|verdict|conclusion/i.test(outputToEvaluate),
+          hasEvidence: /source|study|report|research|gartner/i.test(outputToEvaluate),
+          hasNumbers: /\d+\.\d+|\$\d+|\d+%/i.test(outputToEvaluate),
+          hasStructure: /##|\n-\s|\n\d+\./i.test(outputToEvaluate),
+          hasUncertainty: /assumption|inference|estimated|confidence/i.test(outputToEvaluate),
+        };
+
+        const signalCount = Object.values(signals).filter(Boolean).length;
+        const coverageRatio = signalCount / Object.keys(signals).length;
+
+        // Each dimension scored independently from matched signals
+        const correctness = (signals.hasTAM ? 0.20 : 0) + (signals.hasCompetitors ? 0.20 : 0) + (signals.hasNumbers ? 0.20 : 0) + (signals.hasRisks ? 0.15 : 0) + 0.10;
+        const evidence = (signals.hasEvidence ? 0.30 : 0.05) + (signals.hasNumbers ? 0.25 : 0) + (coverageRatio * 0.20) + 0.10;
+        const completeness = coverageRatio;
+        const reasoning = (signals.hasStructure ? 0.30 : 0.10) + (signals.hasRisks ? 0.20 : 0) + (signals.hasRec ? 0.20 : 0) + 0.15;
+        const reqFit = (signals.hasTAM ? 0.25 : 0) + (signals.hasCompetitors ? 0.25 : 0) + (signals.hasRisks ? 0.25 : 0) + (signals.hasRec ? 0.25 : 0);
+        const consistency = signals.hasNumbers ? 0.65 : 0.40;
+        const clarity = signals.hasStructure ? 0.70 : 0.35;
+        const uncertainty = signals.hasUncertainty ? 0.70 : 0.30;
+
+        const qualityScore = Number((
+          Math.min(1, correctness) * QUALITY_WEIGHTS.correctness +
+          Math.min(1, evidence) * QUALITY_WEIGHTS.evidence +
+          Math.min(1, completeness) * QUALITY_WEIGHTS.completeness +
+          Math.min(1, reasoning) * QUALITY_WEIGHTS.reasoning +
+          Math.min(1, reqFit) * QUALITY_WEIGHTS.requirementFit +
+          consistency * QUALITY_WEIGHTS.consistency +
+          clarity * QUALITY_WEIGHTS.clarity +
+          uncertainty * QUALITY_WEIGHTS.uncertainty
+        ).toFixed(3));
+
+        const reliabilityScore = Number((consistency * 0.4 + Math.min(1, reasoning) * 0.4 + uncertainty * 0.2).toFixed(3));
+        const evidenceScore = Math.min(1, evidence);
 
         return {
           qualityScore,
-          reliabilityScore: hasCoverage ? 0.95 : 0.50,
-          evidenceScore: hasCoverage ? 0.94 : 0.40,
+          reliabilityScore,
+          evidenceScore,
           constraintCompliance: {
             budgetMet: totalCost <= task.budget,
             deadlineMet: wallClockMs <= task.deadlineSeconds * 1000,
-            reliabilityMet: (hasCoverage ? 0.95 : 0.50) >= task.reliabilityTarget,
+            reliabilityMet: reliabilityScore >= task.reliabilityTarget,
             budgetUsed: totalCost,
             timeUsedMs: wallClockMs,
           },
-          failureReasons: hasCoverage ? [] : ['Output lacks verified market and competitor metrics'],
+          failureReasons: qualityScore < 0.80 ? ['Output lacks sufficient verified market and competitor metrics'] : [],
           evaluationMethod: 'fallback-heuristic-8dim',
         };
+
       }
     }
   );

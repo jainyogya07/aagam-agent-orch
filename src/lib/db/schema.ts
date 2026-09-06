@@ -177,6 +177,100 @@ export const mutations = pgTable('mutations', {
 });
 
 // ----------------------------------------------------------
+// Sessions (hierarchical: Task → Architecture → Agent)
+// ----------------------------------------------------------
+
+export const sessionTypeEnum = pgEnum('session_type', [
+  'TASK', 'ARCHITECTURE', 'AGENT',
+]);
+
+export const sessionStatusEnum = pgEnum('session_status', [
+  'CREATED', 'RUNNING', 'PAUSED', 'COMPLETED', 'FAILED', 'CANCELLED',
+]);
+
+export const sessions = pgTable('sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  type: sessionTypeEnum('type').notNull(),
+  runId: uuid('run_id').notNull().references(() => runs.id),
+  
+  // Hierarchy
+  parentSessionId: uuid('parent_session_id'),
+  childSessionIds: jsonb('child_session_ids').$type<string[]>().default([]),
+  
+  // Task Session specific
+  taskId: uuid('task_id').references(() => tasks.id),
+  goal: text('goal'),
+  taskSpec: jsonb('task_spec'),
+  benchmarkMode: text('benchmark_mode'),
+  availableModels: jsonb('available_models').$type<string[]>(),
+  availableTools: jsonb('available_tools').$type<string[]>(),
+  maxIterations: integer('max_iterations'),
+  architectureSessionIds: jsonb('architecture_session_ids').$type<string[]>().default([]),
+  bestArchitectureSessionId: uuid('best_architecture_session_id'),
+  bestQualityScore: real('best_quality_score'),
+  stopReason: text('stop_reason'),
+  finalOutput: text('final_output'),
+  
+  // Architecture Session specific
+  taskSessionId: uuid('task_session_id'),
+  version: integer('version'),
+  architectureId: uuid('architecture_id').references(() => architectures.id),
+  parentArchitectureSessionId: uuid('parent_architecture_session_id'),
+  nodes: jsonb('nodes'),
+  edges: jsonb('edges'),
+  resourcePolicy: jsonb('resource_policy'),
+  agentSessionIds: jsonb('agent_session_ids').$type<string[]>().default([]),
+  mutationReason: text('mutation_reason'),
+  mutationType: text('mutation_type'),
+  expectedImprovement: text('expected_improvement'),
+  qualityScore: real('quality_score'),
+  reliabilityScore: real('reliability_score'),
+  evidenceScore: real('evidence_score'),
+  resourceReservations: jsonb('resource_reservations').$type<unknown[]>().default([]),
+  resourceReclamations: jsonb('resource_reclamations').$type<unknown[]>().default([]),
+  
+  // Agent Session specific
+  architectureSessionId: uuid('architecture_session_id'),
+  agentNodeId: text('agent_node_id'),
+  agentName: text('agent_name'),
+  agentRole: text('agent_role'),
+  model: text('model'),
+  systemPrompt: text('system_prompt'),
+  tools: jsonb('tools').$type<string[]>(),
+  maxTokens: integer('max_tokens'),
+  resourceBudget: jsonb('resource_budget'),
+  input: text('input'),
+  output: text('output'),
+  toolCalls: jsonb('tool_calls').$type<unknown[]>().default([]),
+  claims: jsonb('claims').$type<unknown[]>().default([]),
+  evidenceItems: jsonb('evidence_items').$type<unknown[]>().default([]),
+  tokensIn: integer('tokens_in').default(0),
+  tokensOut: integer('tokens_out').default(0),
+  latencyMs: integer('latency_ms').default(0),
+  contributionScore: real('contribution_score'),
+  marginalValue: real('marginal_value'),
+  traceId: text('trace_id'),
+  spanIds: jsonb('span_ids').$type<string[]>().default([]),
+  
+  // Common fields
+  status: sessionStatusEnum('status').notNull().default('CREATED'),
+  budgetUSD: real('budget_usd').notNull(),
+  costUSD: real('cost_usd').default(0),
+  tokensUsed: integer('tokens_used').default(0),
+  inputContext: jsonb('input_context').notNull(),
+  outputContext: jsonb('output_context'),
+  inputArtifactIds: jsonb('input_artifact_ids').$type<string[]>().default([]),
+  outputArtifactIds: jsonb('output_artifact_ids').$type<string[]>().default([]),
+  metadata: jsonb('metadata').default({}),
+  error: text('error'),
+  
+  // Timestamps
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ----------------------------------------------------------
 // Events (for SSE streaming and audit trail)
 // ----------------------------------------------------------
 

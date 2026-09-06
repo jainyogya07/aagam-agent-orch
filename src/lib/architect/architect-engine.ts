@@ -60,8 +60,8 @@ CRITICAL RULES:
 3. Independent subtasks MUST be on parallel branches.
 4. Only create edges where genuine data dependencies exist.
 5. Each agent must have a SPECIFIC role and objective. No generic "helper" agents.
-6. Assign cheaper models (gpt-4o-mini, gpt-4.1-nano) to simpler tasks.
-7. Assign stronger models (gpt-4o, gpt-4.1) to tasks requiring deep reasoning.
+6. Assign models STRICTLY from the AVAILABLE MODELS list: ${availableModels.join(', ')}
+7. Choose glm-4-flash for computation & fast tasks, or gpt-5-nano for deep reasoning.
 8. Consider the budget: $${task.budget.toFixed(2)} total for all agents.
 9. Consider the time: ${task.deadlineSeconds}s total. Parallel branches reduce wall-clock time.
 10. A verification/synthesis agent should typically be the final node.
@@ -156,7 +156,18 @@ Return the architecture JSON:`;
         runId,
         version: 1,
         taskId: task.id,
-        nodes: validated.nodes.map(n => ({ ...n, status: 'PENDING' as const })),
+        nodes: validated.nodes.map(n => {
+          const modelToUse = availableModels.includes(n.model)
+            ? n.model
+            : availableModels.includes('glm-4-flash')
+            ? 'glm-4-flash'
+            : (availableModels[0] || 'glm-4-flash');
+          return {
+            ...n,
+            model: modelToUse,
+            status: 'PENDING' as const,
+          };
+        }),
         edges: validated.edges,
         resourcePolicy: validated.resourcePolicy || {
           totalBudget: task.budget,

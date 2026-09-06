@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Agent Resource Exchange",
-  description: "Outcome-driven architecture evolution under hard resource constraints",
+  title: "AAGAM",
+  description: "Give us a problem, not a workflow.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

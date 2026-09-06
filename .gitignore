@@ -44,4 +44,11 @@ next-env.d.ts
 # local runtime artifacts
 .agent_sessions/
 .checkpoints/
+/runs/
+data/agent-sessions/
+
+# secrets and credentials
+*.key
+*.cert
+credentials*
 

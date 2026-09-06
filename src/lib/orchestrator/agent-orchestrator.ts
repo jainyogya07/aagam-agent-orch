@@ -24,6 +24,7 @@ import { synthesizeEvidenceAnswer } from '@/lib/synthesis/evidence-synthesizer';
 import { evaluateQualityGate } from '@/lib/quality/quality-gate';
 import { DecisionLogger } from './decision-logger';
 import { CheckpointEngine } from './checkpoint-engine';
+import { RunArtifactStore } from './run-artifact-store';
 import { eventBus } from '@/lib/events/event-emitter';
 import { ProviderGateway } from '@/lib/providers/gateway';
 import { initializeNeatlogsAgentsTracing } from '@/lib/trace/neatlogs-adapter';
@@ -539,7 +540,7 @@ export class AgentOrchestrator {
           completedAt: new Date(),
         }).where(eq(schema.runs.id, runId)).catch(() => {});
 
-        return {
+        const runResult: OrchestratorRunResult = {
           runId,
           taskSpec,
           bestArchitecture: bestVersion.architecture,
@@ -551,6 +552,12 @@ export class AgentOrchestrator {
           finalOutput: bestVersion.finalAnswer ?? 'Completed analysis',
           allArtifacts,
         };
+
+        await RunArtifactStore.persistRunReview(runResult).catch((err) => {
+          console.warn(`[AgentOrchestrator] Failed to persist run review artifacts: ${err}`);
+        });
+
+        return runResult;
       } catch (err) {
         await db.update(schema.runs).set({
           status: 'FAILED',

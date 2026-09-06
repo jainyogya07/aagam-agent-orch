@@ -9,17 +9,12 @@ import { instrumentOpenAIClient } from '@/lib/observability/neatlogs';
 // Cost per 1M tokens (USD)
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'gpt-5-nano': { input: 0.15, output: 0.6 },
-  'gpt-4o-mini': { input: 0.15, output: 0.6 },
-  'gpt-4o': { input: 2.5, output: 10 },
-  'gpt-4.1': { input: 2.0, output: 8.0 },
-  'gpt-4.1-mini': { input: 0.4, output: 1.6 },
-  'gpt-4.1-nano': { input: 0.1, output: 0.4 },
 };
 
 export class OpenAIProvider implements LLMProvider {
   readonly id = 'openai';
   readonly name = 'OpenAI';
-  readonly availableModels = Object.keys(MODEL_PRICING);
+  readonly availableModels = ['gpt-5-nano'];
 
   private client: OpenAI | null = null;
   private usage: ProviderUsage = {
@@ -35,8 +30,9 @@ export class OpenAIProvider implements LLMProvider {
       if (!apiKey) {
         throw new Error('OPENAI_API_KEY environment variable is not set');
       }
-      const rawClient = new OpenAI({ apiKey, timeout: 15000 });
+      const rawClient = new OpenAI({ apiKey, timeout: 60000 });
       this.client = instrumentOpenAIClient(rawClient);
+
     }
     return this.client;
   }
@@ -69,12 +65,14 @@ export class OpenAIProvider implements LLMProvider {
 
       const isReasoningModel = modelToUse.includes('nano') || modelToUse.startsWith('o1') || modelToUse.startsWith('o3');
 
+      const initialTokens = isReasoningModel
+        ? Math.max(options.maxTokens ?? 3500, 6000)
+        : Math.min(options.maxTokens ?? 2000, 4000);
+
       const requestParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
         model: modelToUse,
         messages,
-        max_completion_tokens: isReasoningModel
-          ? Math.max(options.maxTokens ?? 2500, 4500)
-          : Math.min(options.maxTokens ?? 2000, 4000),
+        max_completion_tokens: initialTokens,
         ...(options.seed !== undefined && { seed: options.seed }),
       };
 
@@ -88,24 +86,31 @@ export class OpenAIProvider implements LLMProvider {
         requestParams.response_format = { type: 'json_object' };
       }
 
-      const response = await client.chat.completions.create(requestParams);
+      let response = await client.chat.completions.create(requestParams);
+      let choice = response.choices[0];
+      let content = choice?.message?.content ?? '';
+
+      // If reasoning model ran out of tokens before generating content, retry with higher limit
+      if (!content && choice?.finish_reason === 'length' && isReasoningModel) {
+        console.warn(`[OpenAI] ${modelToUse} hit reasoning length limit; retrying with 9000 max_completion_tokens...`);
+        requestParams.max_completion_tokens = 9000;
+        response = await client.chat.completions.create(requestParams);
+        choice = response.choices[0];
+        content = choice?.message?.content ?? '';
+      }
+
 
       const latencyMs = Date.now() - startTime;
       const tokensIn = response.usage?.prompt_tokens ?? 0;
       const tokensOut = response.usage?.completion_tokens ?? 0;
       const cost = this.estimateCost(tokensIn, tokensOut, modelToUse);
-      const choice = response.choices[0];
-      const content = choice?.message?.content ?? '';
-
-      if (!content && choice?.finish_reason === 'length') {
-        console.warn(`[OpenAI] ${modelToUse} hit length limit with empty visible content (reasoning exhausted completion tokens).`);
-      }
 
       // Update cumulative usage
       this.usage.totalTokensIn += tokensIn;
       this.usage.totalTokensOut += tokensOut;
       this.usage.totalCost += cost;
       this.usage.totalCalls += 1;
+
 
       return {
         content,

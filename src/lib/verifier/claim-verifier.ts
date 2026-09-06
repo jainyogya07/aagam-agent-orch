@@ -105,7 +105,11 @@ Audit each claim independently. Return JSON:`;
 
       try {
         const availableModels = gateway.getAvailableModels();
-        const modelToUse = availableModels.includes('gpt-5-nano') ? 'gpt-5-nano' : (availableModels[0] || 'gpt-5-nano');
+        const modelToUse = availableModels.includes('glm-4-flash')
+          ? 'glm-4-flash'
+          : availableModels.includes('gpt-5-nano')
+          ? 'gpt-5-nano'
+          : (availableModels[0] || 'glm-4-flash');
 
         const response = await gateway.generate(modelToUse, userPrompt, {
           systemPrompt,

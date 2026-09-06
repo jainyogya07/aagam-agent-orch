@@ -13,7 +13,7 @@
 // ALL metrics are measured from real execution data. Zero fabricated numbers.
 // ============================================================
 
-import { db, schema } from '@/lib/db';
+import { db, schema, dbAvailable } from '@/lib/db';
 import { executeRun } from '@/lib/orchestrator/run-orchestrator';
 import { getNeatlogsSessionUrl } from '@/lib/observability/neatlogs';
 import { v4 as uuidv4 } from 'uuid';
@@ -28,6 +28,10 @@ export const BENCHMARK_TASK = {
 
 export async function POST(request: Request) {
   try {
+    if (!dbAvailable) {
+      return Response.json({ error: 'Database is not configured on this host.' }, { status: 503 });
+    }
+
     const body = await request.json().catch(() => ({}));
     const mode = (body.mode as 'BASELINE' | 'RESOURCE_ONLY' | 'FULL') || 'FULL';
     const isAsync = body.async !== false;

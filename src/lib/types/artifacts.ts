@@ -16,7 +16,8 @@ export type ArtifactType =
   | 'REGULATORY'
   | 'SYNTHESIS'
   | 'REPORT'
-  | 'AUDIT';
+  | 'AUDIT'
+  | 'CODE';
 
 export interface ArtifactLineage {
   parentArtifactIds: string[];

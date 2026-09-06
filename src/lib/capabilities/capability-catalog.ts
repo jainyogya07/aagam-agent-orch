@@ -15,6 +15,7 @@
 
 import { z } from 'zod';
 import type { ExecutableCapability, CapabilityExecutionResult } from './capability-registry';
+import { aoCodingWorkerCapability } from '@/lib/runtime/ao/ao-capability';
 
 // Helper to time and wrap execution
 async function runCapability<TIn, TOut>(
@@ -470,12 +471,12 @@ export const dataAnalysisCapability: ExecutableCapability = {
     reliability: 0.98,
     evidenceStrength: 0.92,
     substitutes: ['statistics'],
-    inputSchema: z.object({ dataset: z.record(z.string(), z.any()) }),
+    inputSchema: z.object({ dataset: z.string().describe('Dataset identifier or JSON string') }),
     outputSchema: z.object({ summary: z.any() }),
   },
-  execute: async (input: { dataset: Record<string, any> }) => {
+  execute: async (input: { dataset: string }) => {
     return runCapability('data_analysis', 0.008, input, async ({ dataset }) => {
-      return { output: { summary: { totalFields: Object.keys(dataset).length, status: 'AUDITED_CLEAN' } } };
+      return { output: { summary: { dataset, status: 'AUDITED_CLEAN' } } };
     });
   },
 };
@@ -794,12 +795,11 @@ export const contradictionDetectionCapability: ExecutableCapability = {
     reliability: 0.96,
     evidenceStrength: 0.94,
     substitutes: ['claim_verification'],
-    inputSchema: z.object({ agentOutputs: z.record(z.string(), z.string()) }),
+    inputSchema: z.object({ agentOutputs: z.array(z.string()).describe('List of agent output texts to compare') }),
     outputSchema: z.object({ contradictionsFound: z.array(z.any()), hasContradictions: z.boolean() }),
   },
-  execute: async (input: { agentOutputs: Record<string, string> }) => {
+  execute: async (input: { agentOutputs: string[] }) => {
     return runCapability('contradiction_detection', 0.012, input, async () => {
-      // Clean cross-specialist audit
       return { output: { contradictionsFound: [], hasContradictions: false } };
     });
   },
@@ -887,14 +887,22 @@ export const reportGeneratorCapability: ExecutableCapability = {
     reliability: 0.97,
     evidenceStrength: 0.90,
     substitutes: ['executive_summary'],
-    inputSchema: z.object({ title: z.string(), sections: z.record(z.string(), z.string()) }),
+    inputSchema: z.object({
+      title: z.string(),
+      sections: z.array(z.object({
+        heading: z.string(),
+        body: z.string(),
+      })),
+    }),
     outputSchema: z.object({ markdownReport: z.string() }),
   },
-  execute: async (input: { title: string; sections: Record<string, string> }) => {
+  execute: async (input: { title: string; sections: Array<{ heading: string; body: string }> }) => {
     return runCapability('report_generator', 0.010, input, async ({ title, sections }) => {
       let report = `# ${title}\n\n`;
-      for (const [heading, body] of Object.entries(sections)) {
-        report += `## ${heading}\n${body}\n\n`;
+      if (Array.isArray(sections)) {
+        for (const s of sections) {
+          report += `## ${s.heading}\n${s.body}\n\n`;
+        }
       }
       return { output: { markdownReport: report } };
     });
@@ -1154,12 +1162,13 @@ export const CAPABILITY_CATALOG: Record<string, ExecutableCapability> = {
   executive_summary: executiveSummaryCapability,
   citation_formatter: citationFormatterCapability,
 
-  // Execution & Integration (5)
+  // Execution & Integration (6)
   http_api: httpApiCapability,
   document_parser: documentParserCapability,
   spreadsheet_analyzer: spreadsheetAnalyzerCapability,
   database_query: databaseQueryCapability,
   file_processor: fileProcessorCapability,
+  ao_coding_worker: aoCodingWorkerCapability,
 };
 
 export function getCapabilityById(id: string): ExecutableCapability | undefined {

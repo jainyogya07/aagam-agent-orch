@@ -110,7 +110,11 @@ Audit the final answer against the rubric and return JSON:`;
 
       try {
         const availableModels = gateway.getAvailableModels();
-        const modelToUse = availableModels.includes('gpt-5-nano') ? 'gpt-5-nano' : (availableModels[0] || 'gpt-5-nano');
+        const modelToUse = availableModels.includes('glm-4-flash')
+          ? 'glm-4-flash'
+          : availableModels.includes('gpt-5-nano')
+          ? 'gpt-5-nano'
+          : (availableModels[0] || 'glm-4-flash');
 
         const response = await gateway.generate(modelToUse, userPrompt, {
           systemPrompt,
@@ -123,14 +127,14 @@ Audit the final answer against the rubric and return JSON:`;
         const d = parsed.dimensions || {};
 
         const dimensions = {
-          correctness: clampScore(d.correctness, 0.92),
-          evidence: clampScore(d.evidence, 0.90),
-          completeness: clampScore(d.completeness, 0.92),
-          reasoning: clampScore(d.reasoning, 0.92),
-          requirementFit: clampScore(d.requirementFit, 0.95),
-          consistency: clampScore(d.consistency, 0.95),
-          clarity: clampScore(d.clarity, 0.95),
-          uncertainty: clampScore(d.uncertainty, 0.90),
+          correctness: clampScore(d.correctness, 0.50),
+          evidence: clampScore(d.evidence, 0.45),
+          completeness: clampScore(d.completeness, 0.50),
+          reasoning: clampScore(d.reasoning, 0.50),
+          requirementFit: clampScore(d.requirementFit, 0.55),
+          consistency: clampScore(d.consistency, 0.60),
+          clarity: clampScore(d.clarity, 0.60),
+          uncertainty: clampScore(d.uncertainty, 0.45),
         };
 
         // Calculate genuine weighted score
@@ -211,28 +215,52 @@ Audit the final answer against the rubric and return JSON:`;
       } catch (err) {
         eventBus.log(runId, 'warn', `Quality gate fallback engaged: ${err instanceof Error ? err.message : String(err)}`);
 
-        // Strict deterministic rubric fallback
+        // Strict deterministic rubric fallback — conservative, honest scoring
         const hasTAM = /tam|market size|\$\d+/i.test(finalAnswer);
         const hasCompetitors = /competitor|incumbent/i.test(finalAnswer);
         const hasRisks = /risk|mitigat/i.test(finalAnswer);
         const hasRec = /recommendation|verdict/i.test(finalAnswer);
+        const hasEvidence = /source|study|report|research|gartner|mckinsey/i.test(finalAnswer);
+        const hasNumbers = /\d+\.\d+|\$\d+|\d+%/i.test(finalAnswer);
+        const hasStructure = /##|\n-\s|\n\d+\./i.test(finalAnswer);
+        const hasUncertainty = /assumption|inference|estimated|projected|confidence/i.test(finalAnswer);
 
+        // Each signal contributes independently — no magical 0.95 defaults
+        const correctnessScore = (hasTAM ? 0.25 : 0) + (hasCompetitors ? 0.20 : 0) + (hasNumbers ? 0.20 : 0) + (hasRisks ? 0.15 : 0) + 0.10;
+        const evidenceScore = (hasEvidence ? 0.35 : 0.05) + (hasNumbers ? 0.25 : 0) + (criticalClaimsVerifiedRatio * 0.30) + 0.05;
         const completenessScore = (hasTAM ? 0.25 : 0) + (hasCompetitors ? 0.25 : 0) + (hasRisks ? 0.25 : 0) + (hasRec ? 0.25 : 0);
-        const overallScore = Number((0.95 * completenessScore + 0.05 * criticalClaimsVerifiedRatio).toFixed(3));
+        const reasoningScore = (hasStructure ? 0.30 : 0.10) + (hasRisks ? 0.25 : 0.05) + (hasRec ? 0.25 : 0.05) + 0.10;
+        const requirementFitScore = completenessScore;
+        const consistencyScore = hasNumbers ? 0.65 : 0.45;
+        const clarityScore = hasStructure ? 0.70 : 0.40;
+        const uncertaintyScore = hasUncertainty ? 0.70 : 0.35;
+
+        const dimensions = {
+          correctness: Math.min(1, correctnessScore),
+          evidence: Math.min(1, evidenceScore),
+          completeness: completenessScore,
+          reasoning: Math.min(1, reasoningScore),
+          requirementFit: requirementFitScore,
+          consistency: consistencyScore,
+          clarity: clarityScore,
+          uncertainty: uncertaintyScore,
+        };
+
+        const overallScore = Number((
+          dimensions.correctness * QUALITY_WEIGHTS.correctness +
+          dimensions.evidence * QUALITY_WEIGHTS.evidence +
+          dimensions.completeness * QUALITY_WEIGHTS.completeness +
+          dimensions.reasoning * QUALITY_WEIGHTS.reasoning +
+          dimensions.requirementFit * QUALITY_WEIGHTS.requirementFit +
+          dimensions.consistency * QUALITY_WEIGHTS.consistency +
+          dimensions.clarity * QUALITY_WEIGHTS.clarity +
+          dimensions.uncertainty * QUALITY_WEIGHTS.uncertainty
+        ).toFixed(3));
 
         return {
           passed: overallScore >= 0.95 && criticalClaimsVerifiedRatio >= 0.95,
           overallScore,
-          dimensions: {
-            correctness: 0.95,
-            evidence: 0.94,
-            completeness: completenessScore,
-            reasoning: 0.95,
-            requirementFit: completenessScore,
-            consistency: 0.96,
-            clarity: 0.95,
-            uncertainty: 0.92,
-          },
+          dimensions,
           criticalClaimsVerifiedRatio,
           evidenceCoverageRatio,
           defects: existingDefects,

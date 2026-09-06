@@ -23,8 +23,12 @@ export class PersistentDBSession implements Session {
 
   constructor(options: PersistentSessionOptions) {
     this.sessionId = options.sessionId;
-    const baseDir = options.storageDir ?? path.join(process.cwd(), '.agent_sessions');
-    if (!fs.existsSync(baseDir)) {
+    const baseDir =
+      options.storageDir ??
+      (process.env.VERCEL
+        ? path.join('/tmp', 'aagam-sessions')
+        : path.join(process.cwd(), 'data', 'agent-sessions'));
+    if (!fs.existsSync(/* turbopackIgnore: true */ baseDir)) {
       try {
         fs.mkdirSync(baseDir, { recursive: true });
       } catch {

@@ -96,7 +96,12 @@ ${a.outputPreview}
 Analyze each agent's marginal contribution. Return JSON array:`;
 
   try {
-    const contribModel = gateway.getAvailableModels().includes('gpt-5-nano') ? 'gpt-5-nano' : (gateway.getAvailableModels()[0] || 'gpt-5-nano');
+    const availableModels = gateway.getAvailableModels();
+    const contribModel = availableModels.includes('glm-4-flash')
+      ? 'glm-4-flash'
+      : availableModels.includes('gpt-5-nano')
+      ? 'gpt-5-nano'
+      : (availableModels[0] || 'glm-4-flash');
     const response = await gateway.generate(contribModel, userPrompt, {
       systemPrompt,
       temperature: 0.3,
