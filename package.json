@@ -9,15 +9,27 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@xyflow/react": "^12.11.6",
+    "drizzle-orm": "^0.45.2",
+    "framer-motion": "^13.2.0",
+    "neatlogs": "^1.1.19",
     "next": "16.3.4",
+    "openai": "^7.10.0",
+    "pg": "^8.23.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "uuid": "^14.0.2",
+    "zod": "^4.5.4",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/uuid": "^10.0.0",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",

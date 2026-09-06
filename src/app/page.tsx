@@ -1,69 +1,146 @@
-import Image from "next/image";
+'use client';
+
+import { useState } from 'react';
+import { useRunStore } from '@/stores/run-store';
+import Sidebar from '@/components/sidebar/sidebar';
+import ArchitectureCanvas from '@/components/canvas/architecture-canvas';
+import ResourcePanel from '@/components/resource-panel/resource-panel';
+import ExecutionTerminal from '@/components/terminal/execution-terminal';
+import TaskForm from '@/components/task-form/task-form';
 
 export default function Home() {
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const status = useRunStore(s => s.status);
+  const finalQuality = useRunStore(s => s.finalQuality);
+  const finalReliability = useRunStore(s => s.finalReliability);
+  const stopReason = useRunStore(s => s.stopReason);
+  const reset = useRunStore(s => s.reset);
+  const startBenchmark = useRunStore(s => s.startBenchmark);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="app-layout">
+      {/* Header */}
+      <header className="app-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 16, color: 'var(--color-accent-light)' }}>⬡</span>
+          <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.02em' }}>
+            Agent Resource Exchange
+          </span>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Status pills */}
+          {status === 'running' && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: 'rgba(99, 102, 241, 0.1)', padding: '4px 10px',
+              borderRadius: 20, fontSize: 11, color: 'var(--color-accent-light)',
+            }}>
+              <span className="status-dot running" /> Executing...
+            </div>
+          )}
+          {status === 'completed' && finalQuality !== null && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              fontSize: 11, color: 'var(--color-text-secondary)',
+            }}>
+              <span style={{
+                background: 'rgba(34, 197, 94, 0.1)', padding: '4px 8px',
+                borderRadius: 12, color: 'var(--color-success)',
+              }}>
+                Quality: {(finalQuality * 100).toFixed(1)}%
+              </span>
+              {finalReliability !== null && (
+                <span style={{
+                  background: 'rgba(34, 197, 94, 0.1)', padding: '4px 8px',
+                  borderRadius: 12, color: 'var(--color-success)',
+                }}>
+                  Reliability: {(finalReliability * 100).toFixed(1)}%
+                </span>
+              )}
+            </div>
+          )}
+          {status === 'failed' && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: 'rgba(239, 68, 68, 0.1)', padding: '4px 10px',
+              borderRadius: 20, fontSize: 11, color: 'var(--color-danger)',
+            }}>
+              <span className="status-dot failed" /> Failed
+            </div>
+          )}
+
+          {/* Action buttons */}
+          {status !== 'idle' && (
+            <button
+              onClick={() => { reset(); }}
+              style={{
+                background: 'var(--color-surface-3)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 6,
+                padding: '5px 12px',
+                fontSize: 12,
+                color: 'var(--color-text-secondary)',
+                cursor: 'pointer',
+              }}
+            >
+              Reset
+            </button>
+          )}
+          <button
+            onClick={() => startBenchmark('FULL')}
+            style={{
+              background: 'linear-gradient(135deg, #10b981, #059669)',
+              border: '1px solid rgba(16, 185, 129, 0.4)',
+              borderRadius: 6,
+              padding: '5px 14px',
+              fontSize: 12,
+              fontWeight: 600,
+              color: 'white',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
+            }}
+            disabled={status === 'running'}
+            title="Execute deterministic benchmark: V1 redundant work → Reclaim to pool → Reallocate to Verifier → V2 mutation & evaluation"
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <span>⚡</span> Run Benchmark (V1 → V2)
+          </button>
+          <button
+            onClick={() => setShowTaskForm(true)}
+            style={{
+              background: 'linear-gradient(135deg, var(--color-accent), #4f46e5)',
+              border: 'none',
+              borderRadius: 6,
+              padding: '5px 14px',
+              fontSize: 12,
+              fontWeight: 600,
+              color: 'white',
+              cursor: 'pointer',
+            }}
+            disabled={status === 'running'}
           >
-            Documentation
-          </a>
+            + Custom Task
+          </button>
         </div>
-      </main>
+      </header>
+
+      {/* Sidebar */}
+      <Sidebar />
+
+      {/* Center Canvas */}
+      <ArchitectureCanvas />
+
+      {/* Right Panel */}
+      <ResourcePanel />
+
+      {/* Bottom Terminal */}
+      <ExecutionTerminal />
+
+      {/* Task Form Modal */}
+      {showTaskForm && <TaskForm onClose={() => setShowTaskForm(false)} />}
     </div>
   );
 }
