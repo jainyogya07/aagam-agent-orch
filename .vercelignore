@@ -5,6 +5,6 @@ src/app/page-new.tsx
 .git
 .agent_sessions
 .checkpoints
-runs
+/runs
 data
 node_modules
