@@ -17,6 +17,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Architecture, AgentNode } from '@/lib/types/architecture';
 import type { AgentExecutionResult } from '@/lib/types/evaluation';
+import type { ArtifactEnvelope } from '@/lib/types/artifacts';
 import { eventBus } from '@/lib/events/event-emitter';
 import { runAgent, type AgentRunnerInput } from '@/lib/runner/agent-runner';
 import { ProviderGateway } from '@/lib/providers/gateway';
@@ -49,6 +50,9 @@ export interface SchedulerOptions {
   taskGoal: string;
   runId: string;
   architectureId: string;
+  architectureVersion?: number;
+  taskId?: string;
+  upstreamArtifacts?: ArtifactEnvelope[];
   gateway: ProviderGateway;
   /** Called before launching an agent — return false to block it */
   onBeforeRun?: (agent: AgentNode) => Promise<boolean>;
@@ -61,7 +65,18 @@ export async function executeDAG(
   options: SchedulerOptions
 ): Promise<SchedulerResult> {
   const startTime = Date.now();
-  const { maxConcurrency, deadlineMs, taskGoal, runId, architectureId, gateway, signal } = options;
+  const {
+    maxConcurrency,
+    deadlineMs,
+    taskGoal,
+    runId,
+    architectureId,
+    architectureVersion = 1,
+    taskId = runId,
+    upstreamArtifacts = [],
+    gateway,
+    signal,
+  } = options;
 
   // ----------------------------------------------------------
   // 1. Build the scheduler graph
@@ -223,6 +238,9 @@ export async function executeDAG(
           taskGoal,
           runId,
           architectureId,
+          architectureVersion,
+          taskId,
+          upstreamArtifacts,
           gateway,
         };
 

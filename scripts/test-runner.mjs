@@ -79,7 +79,7 @@ async function testExecuteRunAndStreamSSE(task) {
   // Poll for completion while checking SSE events
   let completed = false;
   let attempts = 0;
-  const maxAttempts = 90; // 180 seconds max to accommodate multi-agent reasoning chain
+  const maxAttempts = 150; // 300 seconds max to accommodate multi-agent reasoning chain and dual iterations
 
   while (!completed && attempts < maxAttempts) {
     attempts++;

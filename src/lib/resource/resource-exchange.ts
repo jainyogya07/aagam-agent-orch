@@ -33,6 +33,7 @@ export class ResourceExchange {
       moneyTotal: budget,
       moneyRemaining: budget,
       moneySpent: 0,
+      moneyReserved: 0,
       tokensTotal: Math.floor(budget * 1_000_000), // Rough: $1 ≈ 1M tokens for cheap models
       tokensRemaining: Math.floor(budget * 1_000_000),
       tokensUsed: 0,
@@ -49,21 +50,19 @@ export class ResourceExchange {
 
   /**
    * Agent requests resources before execution.
-   * Returns a decision: APPROVE, PARTIAL, DEFER, or REJECT.
+   * Enforces atomic reservation: REQUESTED -> RESERVED -> APPROVED.
+   * Concurrency locks ensure parallel agents cannot drive balance negative.
    */
   requestResources(request: ResourceRequest): ResourceDecision {
     this.updateTimeRemaining();
 
     const decision = this.evaluateRequest(request);
 
-    // Apply approved resources
+    // Apply approved atomic reservation
     if (decision.type === 'APPROVE' || decision.type === 'PARTIAL') {
-      this.pool.moneyRemaining -= decision.approved.cost;
-      this.pool.moneySpent += decision.approved.cost;
-      this.pool.tokensRemaining -= decision.approved.tokens;
-      this.pool.tokensUsed += decision.approved.tokens;
-      this.pool.toolCallsRemaining -= decision.approved.toolCalls;
-      this.pool.toolCallsUsed += decision.approved.toolCalls;
+      this.pool.moneyReserved += decision.approved.cost;
+      this.pool.tokensRemaining = Math.max(0, this.pool.tokensRemaining - decision.approved.tokens);
+      this.pool.toolCallsRemaining = Math.max(0, this.pool.toolCallsRemaining - decision.approved.toolCalls);
 
       // Track per-agent allocation
       const existing = this.allocations.get(request.agentId) || {
@@ -96,6 +95,8 @@ export class ResourceExchange {
         agentName: request.agentName,
         requested: request,
         decision: decision,
+        reservedNow: this.pool.moneyReserved,
+        availableUnreserved: Math.max(0, this.pool.moneyRemaining - this.pool.moneyReserved),
       },
     });
 
@@ -104,19 +105,40 @@ export class ResourceExchange {
 
   /**
    * Record actual spending by an agent (called after execution).
-   * Unused approved allocation is automatically refunded to the central pool.
+   * Unused reserved allocation is atomically released back to the central pool.
    */
   recordSpending(agentId: string, actualCost: number, actualTokens: number, toolCalls: number): void {
     const allocation = this.allocations.get(agentId);
     if (allocation) {
-      const unusedCost = Math.max(0, allocation.allocated - actualCost);
+      const reservedForAgent = allocation.allocated;
+      const unusedCost = Math.max(0, reservedForAgent - actualCost);
+
       allocation.spent += actualCost;
       allocation.remaining = Math.max(0, allocation.allocated - allocation.spent);
       allocation.tokensUsed += actualTokens;
 
-      // Unused approved allocation returns to the central pool
-      this.pool.moneySpent = Math.max(0, this.pool.moneySpent - unusedCost);
+      // Release the reservation atomically and record actual spend
+      this.pool.moneyReserved = Math.max(0, this.pool.moneyReserved - reservedForAgent);
+      this.pool.moneySpent += actualCost;
       this.pool.moneyRemaining = Math.max(0, this.pool.moneyTotal - this.pool.moneySpent);
+      this.pool.tokensUsed += actualTokens;
+      this.pool.toolCallsUsed += toolCalls;
+
+      if (unusedCost > 0.001) {
+        eventBus.emit({
+          id: uuidv4(),
+          runId: this.runId,
+          type: 'resource.reclaimed',
+          timestamp: Date.now(),
+          payload: {
+            agentId,
+            agentName: allocation.agentName,
+            amount: unusedCost,
+            reason: `Unused allocation refunded to central pool after execution ($${actualCost.toFixed(4)} consumed of $${reservedForAgent.toFixed(4)} reserved).`,
+            poolRemaining: this.pool.moneyRemaining,
+          },
+        });
+      }
     }
   }
 
@@ -369,11 +391,13 @@ export class ResourceExchange {
   private evaluateRequest(request: ResourceRequest): ResourceDecision {
     const now = Date.now();
 
-    // HARD CONSTRAINT 1: Budget exhausted
-    if (this.pool.moneyRemaining <= 0) {
+    const availableMoney = Math.max(0, this.pool.moneyRemaining - this.pool.moneyReserved);
+
+    // HARD CONSTRAINT 1: Unreserved budget exhausted
+    if (availableMoney <= 0) {
       return this.makeDecision(request, 'REJECT',
         { tokens: 0, toolCalls: 0, cost: 0, latencyMs: 0 },
-        'Budget exhausted — no funds remaining'
+        `Budget exhausted — no unreserved funds remaining ($${this.pool.moneyReserved.toFixed(4)} currently reserved by parallel workers)`
       );
     }
 
@@ -393,10 +417,10 @@ export class ResourceExchange {
       );
     }
 
-    // HARD CONSTRAINT 4: Cost exceeds remaining budget
-    if (request.estimatedCost > this.pool.moneyRemaining) {
-      // Partial approval — give what we have
-      const partialCost = this.pool.moneyRemaining * 0.8; // Keep 20% reserve
+    // HARD CONSTRAINT 4: Cost exceeds available unreserved budget
+    if (request.estimatedCost > availableMoney) {
+      // Partial approval — give 80% of what is unreserved
+      const partialCost = availableMoney * 0.8;
       const ratio = partialCost / request.estimatedCost;
       return this.makeDecision(request, 'PARTIAL',
         {
@@ -405,7 +429,7 @@ export class ResourceExchange {
           cost: partialCost,
           latencyMs: request.estimatedLatencyMs,
         },
-        `Requested cost ($${request.estimatedCost.toFixed(4)}) exceeds remaining budget ($${this.pool.moneyRemaining.toFixed(4)}). Partial approval.`
+        `Requested cost ($${request.estimatedCost.toFixed(4)}) exceeds unreserved available budget ($${availableMoney.toFixed(4)}). Partial reservation.`
       );
     }
 

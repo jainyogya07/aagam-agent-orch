@@ -12,6 +12,7 @@ export const ResourcePoolSchema = z.object({
   moneyRemaining: z.number().nonnegative(),
   moneyTotal: z.number().positive(),
   moneySpent: z.number().nonnegative().default(0),
+  moneyReserved: z.number().nonnegative().default(0),
   tokensRemaining: z.number().int().nonnegative(),
   tokensTotal: z.number().int().positive(),
   tokensUsed: z.number().int().nonnegative().default(0),
