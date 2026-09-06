@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+src/app/page-new.tsx
+.git
+.agent_sessions
+.checkpoints
+runs
+data
+node_modules
